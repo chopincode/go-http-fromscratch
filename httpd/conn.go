@@ -1,7 +1,9 @@
 package httpd
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"net"
 )
@@ -9,10 +11,20 @@ import (
 type conn struct {
 	server *Server
 	rwc    net.Conn
+	lr     *io.LimitedReader
+	bufr   *bufio.Reader
+	bufw   *bufio.Writer // cached writer
 }
 
 func newConn(rwc net.Conn, server *Server) *conn {
-	return &conn{server: server, rwc: rwc}
+	lr := &io.LimitedReader{R: rwc, N: 1 << 20}
+	return &conn{
+		server: server,
+		rwc:    rwc,
+		bufw:   bufio.NewWriterSize(rwc, 4<<10), // cache size 4kb
+		lr:     lr,
+		bufr:   bufio.NewReaderSize(lr, 4<<10),
+	}
 }
 
 func (c *conn) serve() {
@@ -34,6 +46,9 @@ func (c *conn) serve() {
 		res := c.setupResponse()
 
 		c.server.Handler.ServeHTTP(res, req)
+		if err = c.bufw.Flush(); err != nil {
+			return
+		}
 	}
 }
 
