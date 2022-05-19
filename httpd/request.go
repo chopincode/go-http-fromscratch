@@ -24,13 +24,16 @@ type Request struct {
 }
 
 func readRequest(c *conn) (r *Request, err error) {
-	r = &Request{}
+	r = new(Request)
 	r.conn = c
 	r.RemoteAddr = c.rwc.RemoteAddr().String()
 	// read the first line, eg. GET / index?name=hello HTTP/1.1
 	line, err := readLine(c.bufr)
+	if err != nil {
+		return
+	}
 
-	_, err = fmt.Scanf(string(line), "%s%s%s", &r.Method, &r.RequestURI, &r.Proto)
+	_, err = fmt.Sscanf(string(line), "%s%s%s", &r.Method, &r.RequestURI, &r.Proto)
 	if err != nil {
 		return
 	}
@@ -53,7 +56,6 @@ func readRequest(c *conn) (r *Request, err error) {
 	r.conn.lr.N = noLimit
 
 	r.setupBody()
-
 	return r, nil
 }
 
@@ -62,7 +64,6 @@ func readLine(bufr *bufio.Reader) ([]byte, error) {
 	if err != nil {
 		return p, err
 	}
-
 	var l []byte
 	for isPrefix {
 		l, isPrefix, err = bufr.ReadLine()
@@ -100,7 +101,7 @@ func readHeader(bufr *bufio.Reader) (Header, error) {
 		if err != nil {
 			return nil, err
 		}
-		//if we read something like /r/n/r/n，it means http header EOF
+		//if we reach /r/n/r/n，it means we read the eof of the header message
 		if len(line) == 0 {
 			break
 		}
@@ -126,5 +127,45 @@ func (er *eofReader) Read([]byte) (n int, err error) {
 }
 
 func (r *Request) setupBody() {
-	r.Body = &eofReader{}
+	r.Body = new(eofReader)
+}
+
+// Query search for query string
+func (r *Request) Query(name string) string {
+	return r.queryString[name]
+}
+
+// Cookie search for cookie
+func (r *Request) Cookie(name string) string {
+	if r.cookies == nil {
+		r.parseCookies()
+	}
+	return r.cookies[name]
+}
+
+func (r *Request) parseCookies() {
+	if r.cookies != nil {
+		return
+	}
+	r.cookies = make(map[string]string)
+	rawCookies, ok := r.Header["Cookie"]
+	if !ok {
+		return
+	}
+	for _, line := range rawCookies {
+		//example(line): uuid=12314753; tid=1BDB9E9; HOME=1(see http request struct above)
+		kvs := strings.Split(strings.TrimSpace(line), ";")
+		if len(kvs) == 1 && kvs[0] == "" {
+			continue
+		}
+		for i := 0; i < len(kvs); i++ {
+			//example(kvs[i]): uuid=12314753
+			index := strings.IndexByte(kvs[i], '=')
+			if index == -1 {
+				continue
+			}
+			r.cookies[strings.TrimSpace(kvs[i][:index])] = strings.TrimSpace(kvs[i][index+1:])
+		}
+	}
+	return
 }

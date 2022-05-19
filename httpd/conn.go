@@ -54,6 +54,6 @@ func (c *conn) serve() {
 
 // empty implementation for now and will be implemented in later sections
 func (c *conn) readRequest() (*Request, error) { return readRequest(c) }
-func (c *conn) setupResponse() *response       { return nil }
+func (c *conn) setupResponse() *response       { return setupResponse(c) }
 func (c *conn) close()                         { c.rwc.Close() }
 func handleErr(err error, c *conn)             { fmt.Println(err) }
