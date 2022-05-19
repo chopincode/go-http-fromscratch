@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -127,6 +128,22 @@ func (er *eofReader) Read([]byte) (n int, err error) {
 }
 
 func (r *Request) setupBody() {
+	if r.Method != "POST" && r.Method != "PUT" {
+		r.Body = &eofReader{} // body not allowed for post and put methods
+	} else if cl := r.Header.Get("Content-Length"); cl != "" {
+		// if Content-Length is set
+		contentLength, err := strconv.ParseInt(cl, 10, 64)
+		if err != nil {
+			r.Body = &eofReader{}
+			return
+		}
+
+		// maximum body data allowed by content length using limitReader
+		r.Body = io.LimitReader(r.conn.bufr, contentLength)
+	} else {
+		r.Body = &eofReader{}
+	}
+
 	r.Body = new(eofReader)
 }
 
